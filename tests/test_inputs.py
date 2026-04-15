@@ -216,6 +216,45 @@ class URLTest:
         with pytest.raises(ValueError):
             u("://")
 
+    def test_url_netloc_no_tld_raises(self):
+        # netloc present but doesn't match netloc_regex (no TLD) → line 157
+        u = URL()
+        with pytest.raises(ValueError):
+            u("http://invalidhost")
+
+    def test_url_invalid_ip_value_raises(self):
+        # IP matches regex pattern but fails ip() validation → lines 165-166
+        u = URL(ip=True)
+        with pytest.raises(ValueError):
+            u("http://999.999.999.999")
+
+    def test_url_ipv4_127_localhost_not_allowed(self):
+        # IPv4 starting with 127. with ip=True but local=False → line 169
+        u = URL(ip=True)
+        with pytest.raises(ValueError, match="Localhost is not allowed"):
+            u("http://127.0.0.1")
+
+    def test_url_ip_with_check_true_passes(self):
+        # Valid IP with check=True exercises the `if self.check: pass` branch → line 173
+        u = URL(ip=True, check=True)
+        assert u("http://8.8.8.8") == "http://8.8.8.8"
+
+    def test_url_check_existing_domain(self, mocker):
+        # check=True with resolvable domain → lines 191-192
+        mocker.patch("flask_restx.inputs.socket.getaddrinfo", return_value=[])
+        u = URL(check=True)
+        assert u("http://example.com") == "http://example.com"
+
+    def test_url_check_nonexistent_domain_raises(self, mocker):
+        # check=True with unresolvable domain → lines 193-194
+        mocker.patch(
+            "flask_restx.inputs.socket.getaddrinfo",
+            side_effect=socket.error("DNS failure"),
+        )
+        u = URL(check=True)
+        with pytest.raises(ValueError, match="Domain does not exists"):
+            u("http://nonexistent-domain-xyz.example")
+
 
 # ---------------------------------------------------------------------------
 # email
