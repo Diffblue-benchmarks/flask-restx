@@ -1221,3 +1221,61 @@ def test_should_use_fr_error_handler_generic_exception(app):
                 mock_app.create_url_adapter.return_value = adapter
                 result = api._should_use_fr_error_handler()
                 assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Api._register_view - uncovered branches
+# ---------------------------------------------------------------------------
+
+def test_register_view_duplicate_endpoint_same_class_no_error(app):
+    """Line 349: endpoint already in view_functions with same class - no error raised."""
+    api = Api(app)
+
+    class MyResource(Resource):
+        def get(self):
+            return {}
+
+    ns = api.default_namespace
+    api.add_resource(MyResource, "/myres")
+    # Register the same resource again at the same endpoint - should not raise
+    api.add_resource(MyResource, "/myres2")
+
+
+def test_register_view_duplicate_endpoint_different_class_raises(app):
+    """Lines 353-355: endpoint already registered with different class raises ValueError."""
+    api = Api(app)
+
+    class ResourceA(Resource):
+        def get(self):
+            return {"a": 1}
+
+    class ResourceB(Resource):
+        def get(self):
+            return {"b": 2}
+
+    api.add_resource(ResourceA, "/conflict")
+
+    # Manually register ResourceB with the same endpoint name to trigger collision
+    ns = api.default_namespace
+    with pytest.raises(ValueError, match="already set to the class"):
+        api._register_view(app, ResourceB, ns, "/conflict2", endpoint="resource_a")
+
+
+def test_register_view_with_blueprint_setup_uses_blueprint_setup_add_url_rule(app):
+    """Lines 377-380: when blueprint and blueprint_setup are set, use blueprint_setup.add_url_rule."""
+    bp = Blueprint("testbp_rv", __name__)
+    api = Api(bp)
+    app.register_blueprint(bp)
+
+    assert api.blueprint_setup is not None
+
+    class BpResource(Resource):
+        def get(self):
+            return {"bp": True}
+
+    # After registration, blueprint_setup is set; adding a resource should go through blueprint_setup path
+    api.add_resource(BpResource, "/bpresource")
+
+    with app.test_client() as client:
+        resp = client.get("/bpresource")
+        assert resp.status_code == 200
