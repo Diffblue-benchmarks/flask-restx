@@ -68,3 +68,6 @@ node_modules
 
 # Jet Brains
 .idea
+
+# Virtual environment
+.venv/
