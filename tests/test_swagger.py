@@ -1114,3 +1114,131 @@ class SwaggerExpectedParamsTest:
             s = Swagger(api)
             result = s.expected_params({"expect": [parser]})
             assert "name" in result
+
+
+# ---- Swagger.extract_resource_doc ----
+
+class SwaggerExtractResourceDocTest:
+    def test_apidoc_false_returns_false(self, api):
+        """Line 353: doc is False after merge with __apidoc__ = False"""
+        s = Swagger(api)
+
+        class FakeResource:
+            __apidoc__ = False
+            methods = []
+            __name__ = "FakeResource"
+
+        result = s.extract_resource_doc(FakeResource, "/fake")
+        assert result is False
+
+    def test_route_doc_false_returns_false(self, api):
+        """Line 350: route_doc=False returns False immediately"""
+        s = Swagger(api)
+
+        class FakeResource:
+            methods = []
+            __name__ = "FakeResource"
+
+        result = s.extract_resource_doc(FakeResource, "/fake", route_doc=False)
+        assert result is False
+
+    def test_method_impl_im_func(self, api):
+        """Line 371: method_impl has im_func attribute (Python 2 bound method simulation)"""
+        s = Swagger(api)
+
+        def get_func():
+            """Get."""
+            pass
+
+        get_func.im_func = get_func
+
+        class FakeResource:
+            methods = ["get"]
+            __name__ = "FakeResource"
+
+        FakeResource.get = get_func
+
+        result = s.extract_resource_doc(FakeResource, "/fake")
+        assert result is not False
+        assert "get" in result
+
+    def test_method_impl_func_via_classmethod(self, api):
+        """Line 373: method_impl has __func__ attribute (classmethod)"""
+        s = Swagger(api)
+
+        class FakeResource:
+            methods = ["get"]
+            __name__ = "FakeResource"
+
+            @classmethod
+            def get(cls):
+                """Get."""
+                pass
+
+        result = s.extract_resource_doc(FakeResource, "/fake")
+        assert result is not False
+        assert "get" in result
+
+    def test_param_deduplication_when_method_overrides_resource_param(self, api):
+        """Lines 386-404: param deduplication when method overrides a resource-level param"""
+        s = Swagger(api)
+
+        def get_func():
+            """Get."""
+            pass
+
+        get_func.__apidoc__ = {
+            "params": {"item_id": {"description": "Overridden", "in": "path", "type": "integer"}}
+        }
+
+        def put_func():
+            """Put."""
+            pass
+
+        class FakeResource:
+            methods = ["get", "put"]
+            __name__ = "FakeResource"
+
+        FakeResource.get = get_func
+        FakeResource.put = put_func
+
+        result = s.extract_resource_doc(FakeResource, "/items/<int:item_id>")
+        assert result is not False
+        # item_id was overridden by get, so it's removed from top-level params
+        assert "item_id" not in result.get("params", {})
+        # get should have item_id (explicitly overridden)
+        assert "item_id" in result["get"]["params"]
+        # put should also have item_id (propagated down since it was deduplicated)
+        assert "item_id" in result["put"]["params"]
+
+    def test_param_deduplication_with_falsy_method_doc(self, api):
+        """Lines 394-396: method with False doc is skipped in deduplication block"""
+        s = Swagger(api)
+
+        def get_func():
+            """Get."""
+            pass
+
+        get_func.__apidoc__ = {
+            "params": {"item_id": {"description": "Overridden", "in": "path", "type": "integer"}}
+        }
+
+        def post_func():
+            """Post."""
+            pass
+
+        post_func.__apidoc__ = False
+
+        class FakeResource:
+            methods = ["get", "post"]
+            __name__ = "FakeResource"
+
+        FakeResource.get = get_func
+        FakeResource.post = post_func
+
+        result = s.extract_resource_doc(FakeResource, "/items/<int:item_id>")
+        assert result is not False
+        # get should have item_id
+        assert "item_id" in result["get"]["params"]
+        # post doc should be False (hidden method)
+        assert result["post"] is False
