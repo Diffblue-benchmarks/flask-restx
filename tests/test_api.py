@@ -775,6 +775,80 @@ def test_refresolver_cached(app):
         assert resolver2 is not None
 
 
+def test_refresolver_with_models_no_schema_definitions(app):
+    from flask_restx import fields
+
+    api = Api(app)
+    api.model("MyModel", {"name": fields.String()})
+
+    with app.test_request_context("/"):
+        # Schema has no "definitions" key; models exist -> exercises else-branch loop
+        resolver = api.refresolver
+        assert resolver is not None
+
+
+def test_refresolver_model_without_id_gets_id_added(app):
+    from flask_restx import fields
+
+    api = Api(app)
+    model = api.model("NoIdModel", {"value": fields.Integer()})
+
+    with app.test_request_context("/"):
+        # Model schema has no $id; refresolver should add one via copy
+        assert "$id" not in model.__schema__
+        resolver = api.refresolver
+        assert resolver is not None
+
+
+def test_refresolver_model_with_existing_id_not_overwritten(app):
+    from flask_restx import fields
+    from unittest.mock import patch, PropertyMock
+
+    api = Api(app)
+    model = api.model("HasIdModel", {"value": fields.String()})
+
+    schema_with_id = dict(model.__schema__)
+    schema_with_id["$id"] = "http://localhost/custom-id"
+
+    with app.test_request_context("/"):
+        with patch.object(type(model), "__schema__", new_callable=PropertyMock) as mock_schema:
+            mock_schema.return_value = schema_with_id
+            resolver = api.refresolver
+            assert resolver is not None
+
+
+def test_refresolver_with_schema_having_definitions(app):
+    from unittest.mock import patch, PropertyMock
+
+    api = Api(app)
+    schema_with_defs = {
+        "$id": "http://localhost/schema.json",
+        "definitions": {"Foo": {"type": "object"}},
+    }
+
+    with app.test_request_context("/"):
+        with patch.object(type(api), "__schema__", new_callable=PropertyMock) as mock_schema:
+            mock_schema.return_value = schema_with_defs
+            resolver = api.refresolver
+            assert resolver is not None
+
+
+def test_refresolver_with_schema_definitions_no_id(app):
+    from unittest.mock import patch, PropertyMock
+
+    api = Api(app)
+    # Schema with definitions but no $id -> uses default http://localhost/schema.json
+    schema_with_defs = {
+        "definitions": {"Bar": {"type": "string"}},
+    }
+
+    with app.test_request_context("/"):
+        with patch.object(type(api), "__schema__", new_callable=PropertyMock) as mock_schema:
+            mock_schema.return_value = schema_with_defs
+            resolver = api.refresolver
+            assert resolver is not None
+
+
 # ---------------------------------------------------------------------------
 # Api._blueprint_setup_add_url_rule_patch
 # ---------------------------------------------------------------------------
