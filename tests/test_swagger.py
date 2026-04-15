@@ -849,6 +849,154 @@ class SwaggerResponsesForTest:
                 s.responses_for(doc, "get")
 
 
+    def test_responses_for_tuple_3(self, app, api):
+        model = api.model("Tuple3Model", {"name": restx_fields.String()})
+        with app.test_request_context():
+            s = Swagger(api)
+            doc = {
+                "responses": {"201": ("Created", model, {})},
+                "get": {"docstring": {"summary": "ok", "raises": {}}},
+            }
+            responses = s.responses_for(doc, "get")
+            assert responses["201"]["description"] == "Created"
+            assert "schema" in responses["201"]
+
+    def test_responses_for_code_already_in_responses(self, app, api):
+        with app.test_request_context():
+            s = Swagger(api)
+            doc = {
+                "responses": {"200": "Top level"},
+                "get": {
+                    "responses": {"200": "Method level"},
+                    "docstring": {"summary": "ok", "raises": {}},
+                },
+            }
+            responses = s.responses_for(doc, "get")
+            assert responses["200"]["description"] == "Method level"
+
+    def test_responses_for_with_model_in_response(self, app, api):
+        model = api.model("ResponseModel", {"name": restx_fields.String()})
+        with app.test_request_context():
+            s = Swagger(api)
+            doc = {
+                "responses": {"200": ("OK", model, {})},
+                "get": {"docstring": {"summary": "ok", "raises": {}}},
+            }
+            responses = s.responses_for(doc, "get")
+            assert "schema" in responses["200"]
+
+    def test_responses_for_with_model_and_envelope(self, app, api):
+        model = api.model("EnvelopeModel", {"name": restx_fields.String()})
+        with app.test_request_context():
+            s = Swagger(api)
+            doc = {
+                "responses": {"200": ("OK", model, {"envelope": "data"})},
+                "get": {"docstring": {"summary": "ok", "raises": {}}},
+            }
+            responses = s.responses_for(doc, "get")
+            assert "schema" in responses["200"]
+            assert "properties" in responses["200"]["schema"]
+            assert "data" in responses["200"]["schema"]["properties"]
+
+    def test_responses_for_model_in_doc(self, app, api):
+        model = api.model("DocModel", {"name": restx_fields.String()})
+        with app.test_request_context():
+            s = Swagger(api)
+            doc = {
+                "model": model,
+                "get": {"docstring": {"summary": "ok", "raises": {}}},
+            }
+            responses = s.responses_for(doc, "get")
+            assert "200" in responses
+            assert "schema" in responses["200"]
+
+    def test_responses_for_model_with_default_code(self, app, api):
+        from flask_restx._http import HTTPStatus
+        model = api.model("DefaultCodeModel", {"name": restx_fields.String()})
+        with app.test_request_context():
+            s = Swagger(api)
+            doc = {
+                "model": model,
+                "default_code": 201,
+                "get": {"docstring": {"summary": "ok", "raises": {}}},
+            }
+            responses = s.responses_for(doc, "get")
+            assert "201" in responses
+            assert "schema" in responses["201"]
+
+    def test_responses_for_model_in_doc_with_existing_response(self, app, api):
+        model = api.model("ExistingRespModel", {"name": restx_fields.String()})
+        with app.test_request_context():
+            s = Swagger(api)
+            doc = {
+                "responses": {"200": "Already here"},
+                "model": model,
+                "get": {"docstring": {"summary": "ok", "raises": {}}},
+            }
+            responses = s.responses_for(doc, "get")
+            assert "schema" in responses["200"]
+
+    def test_responses_for_docstring_raises_with_matching_error_handler(self, app, api):
+        class MyCustomError(Exception):
+            pass
+
+        def my_handler(e):
+            pass
+
+        my_handler.__apidoc__ = {"responses": {400: "Bad request"}}
+        api.error_handlers[MyCustomError] = my_handler
+
+        with app.test_request_context():
+            s = Swagger(api)
+            doc = {
+                "get": {
+                    "docstring": {
+                        "summary": "ok",
+                        "raises": {"MyCustomError": "Some error"},
+                    },
+                },
+            }
+            responses = s.responses_for(doc, "get")
+            assert "400" in responses
+            assert "$ref" in responses["400"]
+
+    def test_responses_for_docstring_raises_no_matching_handler(self, app, api):
+        class UnhandledError(Exception):
+            pass
+
+        with app.test_request_context():
+            s = Swagger(api)
+            doc = {
+                "get": {
+                    "docstring": {
+                        "summary": "ok",
+                        "raises": {"UnhandledError": "Some error"},
+                    },
+                },
+            }
+            responses = s.responses_for(doc, "get")
+            assert "200" in responses
+
+    def test_responses_for_docstring_raises_handler_without_apidoc(self, app, api):
+        class AnotherError(Exception):
+            pass
+
+        api.error_handlers[AnotherError] = lambda e: None
+
+        with app.test_request_context():
+            s = Swagger(api)
+            doc = {
+                "get": {
+                    "docstring": {
+                        "summary": "ok",
+                        "raises": {"AnotherError": "Some error"},
+                    },
+                },
+            }
+            responses = s.responses_for(doc, "get")
+            assert "200" in responses
+
+
 class SwaggerSerializeResourceTest:
     def test_serialize_resource_hidden(self, app, api):
         class HiddenResource(Resource):
