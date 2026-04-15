@@ -300,3 +300,37 @@ class MarshalWithFieldTest:
             return "1"
 
         assert my_function.__name__ == "my_function"
+
+
+class MarshalWildcardCoverageTest:
+    def test_marshal_wildcard_with_nested_dict_field(self):
+        # Covers line 65: isinstance(val, dict) branch inside has_wildcards block
+        data = {"a": 1, "b": 2, "c": 3}
+        mfields = OrderedDict(
+            [("nested", {"a": fields.Raw}), ("*", fields.Wildcard(fields.Raw))]
+        )
+        result = marshal(data, mfields)
+        assert result["nested"] == {"a": 1}
+
+    def test_marshal_wildcard_skip_none_with_empty_data(self):
+        # Covers line 80: _append returns early when skip_none=True and value is None
+        data = {}
+        mfields = OrderedDict([("*", fields.Wildcard(fields.Raw))])
+        result = marshal(data, mfields, skip_none=True)
+        assert result == {}
+
+    def test_marshal_wildcard_skip_none_non_wildcard_field_is_none(self):
+        # Covers line 97: continue when skip_none=True and non-wildcard field value is None
+        data = {"a": None, "b": 2}
+        mfields = OrderedDict([("a", fields.Raw), ("*", fields.Wildcard(fields.Raw))])
+        result = marshal(data, mfields, skip_none=True)
+        assert "a" not in result
+        assert result.get("b") == 2
+
+    def test_marshal_wildcard_with_envelope(self):
+        # Covers line 105: envelope wrapping inside has_wildcards block
+        data = {"a": 1, "b": 2}
+        mfields = OrderedDict([("*", fields.Wildcard(fields.Raw))])
+        result = marshal(data, mfields, envelope="data")
+        assert "data" in result
+        assert isinstance(result["data"], dict)
