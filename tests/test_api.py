@@ -307,6 +307,38 @@ def test_make_response_text_plain(app):
         assert "text/plain" in resp.content_type
 
 
+def test_make_response_text_plain_branch(app):
+    # When default_mediatype is "text/plain" and representations is empty,
+    # best_match returns "text/plain" as default, hitting lines 435-438.
+    api = Api(app, default_mediatype="text/plain")
+    api.representations.clear()
+    with app.test_request_context("/"):
+        resp = api.make_response("hello world", 200)
+        assert resp.status_code == 200
+        assert "text/plain" in resp.content_type
+
+
+def test_make_response_text_plain_branch_with_headers(app):
+    # Cover lines 435-438: text/plain branch with custom headers
+    api = Api(app, default_mediatype="text/plain")
+    api.representations.clear()
+    with app.test_request_context("/"):
+        resp = api.make_response("data", 201, {"X-Custom": "value"})
+        assert resp.status_code == 201
+        assert "text/plain" in resp.content_type
+
+
+def test_make_response_internal_server_error_branch(app):
+    # When default_mediatype is an unknown type not in representations and not
+    # "text/plain", best_match returns it as default, triggering line 440.
+    from werkzeug.exceptions import InternalServerError
+    api = Api(app, default_mediatype="application/xml")
+    api.representations.clear()
+    with app.test_request_context("/"):
+        with pytest.raises(InternalServerError):
+            api.make_response({"key": "value"}, 200)
+
+
 # ---------------------------------------------------------------------------
 # Api.documentation decorator
 # ---------------------------------------------------------------------------
