@@ -398,6 +398,31 @@ class NestedTest:
         cloned = n.clone(mask=mask)
         assert isinstance(cloned, Nested)
 
+    def test_schema_allOf_when_existing_properties(self):
+        # Lines 287-289: allOf path - triggered when schema already has values
+        # (e.g. title is set) and as_list is False
+        m = self._model("M")
+        n = Nested(m, title="My Title")
+        s = n.schema()
+        assert "allOf" in s
+        assert any(item.get("$ref") == "#/definitions/M" for item in s["allOf"])
+
+    def test_schema_nullable_as_list(self):
+        # Line 301: nullable + as_list -> anyOf contains array type with items
+        m = self._model("M")
+        n = Nested(m, as_list=True, nullable=True)
+        s = n.schema()
+        assert "anyOf" in s
+        array_entry = next(
+            (item for item in s["anyOf"] if item.get("type") == "array"), None
+        )
+        assert array_entry is not None
+        assert array_entry["items"]["$ref"] == "#/definitions/M"
+        null_entry = next(
+            (item for item in s["anyOf"] if item.get("type") == "null"), None
+        )
+        assert null_entry is not None
+
 
 # ---------------------------------------------------------------------------
 # List
