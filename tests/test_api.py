@@ -521,6 +521,15 @@ def test_schema_property(app):
         assert "info" in schema or "swagger" in schema or "openapi" in schema or "error" in schema
 
 
+def test_schema_property_exception_returns_error_dict(app):
+    api = Api(app)
+    with app.test_request_context("/"):
+        with patch("flask_restx.api.Swagger") as mock_swagger:
+            mock_swagger.return_value.as_dict.side_effect = RuntimeError("boom")
+            schema = api.__schema__
+            assert schema == {"error": "Unable to render schema"}
+
+
 # ---------------------------------------------------------------------------
 # Api._own_and_child_error_handlers
 # ---------------------------------------------------------------------------
