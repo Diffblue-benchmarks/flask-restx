@@ -2,6 +2,7 @@
 Unit tests for flask_restx/inputs.py
 """
 import copy
+import socket
 from datetime import datetime, timezone, date as date_type
 
 import pytest
@@ -296,6 +297,17 @@ class EmailTest:
     def test_email_schema_property(self):
         e = email()
         assert e.__schema__ == {"type": "string", "format": "email"}
+
+    def test_email_check_dns_valid(self, mocker):
+        mocker.patch("socket.getaddrinfo", return_value=True)
+        e = email(check=True)
+        assert e("user@example.com") == "user@example.com"
+
+    def test_email_check_dns_invalid(self, mocker):
+        mocker.patch("socket.getaddrinfo", side_effect=socket.error("DNS failure"))
+        e = email(check=True)
+        with pytest.raises(ValueError):
+            e("user@nonexistent-domain-xyz.com")
 
 
 # ---------------------------------------------------------------------------
