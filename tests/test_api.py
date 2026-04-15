@@ -710,6 +710,73 @@ def test_handle_error_unauthorized_adds_challenge(app):
         assert "WWW-Authenticate" in resp.headers
 
 
+def test_handle_error_propagate_reraises_active_exception(app):
+    # Lines 706-708: exc_value is e → bare raise
+    api = Api(app)
+    app.config["PROPAGATE_EXCEPTIONS"] = True
+    app.config["TESTING"] = False
+
+    with app.test_request_context("/"):
+        with pytest.raises(ValueError, match="active exc"):
+            try:
+                raise ValueError("active exc")
+            except ValueError as exc:
+                api.handle_error(exc)
+
+
+def test_handle_error_propagate_raises_e_directly(app):
+    # Line 710: exc_value is not e → raise e
+    api = Api(app)
+    app.config["PROPAGATE_EXCEPTIONS"] = True
+    app.config["TESTING"] = False
+
+    with app.test_request_context("/"):
+        e = ValueError("direct raise")
+        with pytest.raises(ValueError, match="direct raise"):
+            api.handle_error(e)
+
+
+def test_handle_error_http_exception_with_response_no_code(app):
+    # Lines 735-736: HTTPException with code=None but response set
+    from werkzeug.exceptions import HTTPException
+    from flask import Response as FlaskResponse
+
+    api = Api(app)
+
+    exc = HTTPException()
+    exc.code = None
+    exc.response = FlaskResponse(status=422)
+
+    with app.test_request_context("/"):
+        resp = api.handle_error(exc)
+        assert resp.status_code == 422
+
+
+def test_handle_error_default_error_handler(app):
+    # Lines 741-742: _default_error_handler is set
+    api = Api(app)
+    app.config["PROPAGATE_EXCEPTIONS"] = False
+    app.config["TESTING"] = False
+
+    @api.errorhandler
+    def default_handler(e):
+        return {"message": "default handled"}, 422
+
+    with app.test_request_context("/"):
+        resp = api.handle_error(Exception("any error"))
+        assert resp.status_code == 422
+
+
+def test_handle_error_not_acceptable_without_default_mediatype(app):
+    # Lines 776-777: 406 with default_mediatype=None uses fallback
+    api = Api(app)
+    api.default_mediatype = None
+
+    with app.test_request_context("/"):
+        resp = api.handle_error(NotAcceptable())
+        assert resp.status_code == 406
+
+
 # ---------------------------------------------------------------------------
 # Api._help_on_404
 # ---------------------------------------------------------------------------
