@@ -3,7 +3,7 @@ import pytest
 from collections import OrderedDict
 from unittest.mock import MagicMock, patch
 
-from flask import Flask, Blueprint
+from flask import Flask, Blueprint, request, current_app
 from werkzeug.exceptions import NotFound, MethodNotAllowed, NotAcceptable
 
 from flask_restx import Api, Namespace, Resource
@@ -1142,3 +1142,41 @@ def test_has_fr_route_with_fr_endpoint(app):
         with patch.object(api, "_should_use_fr_error_handler", return_value=False):
             result = api._has_fr_route()
             assert result is True
+
+
+def test_should_use_fr_error_handler_method_not_allowed_fr_endpoint(app):
+    api = Api(app)
+
+    class FooResource(Resource):
+        def get(self):
+            return {}
+
+    api.add_resource(FooResource, "/foo")
+
+    with app.test_request_context("/foo", method="POST"):
+        result = api._should_use_fr_error_handler()
+        assert result is True
+
+
+def test_should_use_fr_error_handler_method_not_allowed_non_fr_endpoint(app):
+    @app.route("/bar")
+    def bar_view():
+        return "ok"
+
+    api = Api(app)
+
+    with app.test_request_context("/bar", method="POST"):
+        result = api._should_use_fr_error_handler()
+        assert result is False
+
+
+def test_should_use_fr_error_handler_generic_exception(app):
+    api = Api(app)
+
+    with app.test_request_context("/foo"):
+        adapter = current_app.create_url_adapter(request)
+        with patch.object(type(adapter), "match", side_effect=Exception("redirect")):
+            with patch("flask_restx.api.current_app") as mock_app:
+                mock_app.create_url_adapter.return_value = adapter
+                result = api._should_use_fr_error_handler()
+                assert result is None
