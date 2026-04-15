@@ -214,3 +214,41 @@ class ImportCheckViewFuncTest:
             warnings.simplefilter("always")
             result = import_check_view_func()
         assert callable(result)
+
+    def test_flask_v1_branch(self, mocker):
+        import types
+
+        mocker.patch("importlib.metadata.version", return_value="1.0.0")
+        mock_func = lambda view_func: view_func.__name__
+        mock_helpers = types.ModuleType("flask.helpers")
+        mock_helpers._endpoint_from_view_func = mock_func
+        mocker.patch.dict("sys.modules", {"flask.helpers": mock_helpers})
+        result = import_check_view_func()
+        assert result is mock_func
+
+    def test_flask_v2_branch(self, mocker):
+        import types
+
+        mocker.patch("importlib.metadata.version", return_value="2.0.0")
+        mock_func = lambda view_func: view_func.__name__
+        mock_scaffold = types.ModuleType("flask.scaffold")
+        mock_scaffold._endpoint_from_view_func = mock_func
+        mocker.patch.dict("sys.modules", {"flask.scaffold": mock_scaffold})
+        result = import_check_view_func()
+        assert result is mock_func
+
+    def test_import_error_falls_back_to_to_view_name(self, mocker):
+        import types
+
+        mocker.patch("importlib.metadata.version", return_value="2.0.0")
+        mock_scaffold = types.ModuleType("flask.scaffold")
+        mocker.patch.dict("sys.modules", {"flask.scaffold": mock_scaffold})
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = import_check_view_func()
+        assert callable(result)
+
+        def my_func():
+            pass
+
+        assert result(my_func) == "my_func"
