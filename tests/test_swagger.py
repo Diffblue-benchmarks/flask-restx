@@ -771,6 +771,27 @@ class SwaggerAsDictTest:
             assert d["info"]["license"]["name"] == "MIT"
             assert d["info"]["license"]["url"] == "http://mit.example.com"
 
+    def test_as_dict_include_all_models(self, app):
+        app.config["RESTX_INCLUDE_ALL_MODELS"] = True
+        api = Api(app)
+        model = api.model("MyModel", {"name": restx_fields.String})
+
+        with app.test_request_context():
+            s = Swagger(api)
+            d = s.as_dict()
+            assert "MyModel" in (d.get("definitions") or {})
+
+    def test_as_dict_ns_authorizations_merges_when_api_authorizations_none(self, app):
+        ns_auth = {"apikey": {"type": "apiKey", "in": "header", "name": "X-API-Key"}}
+        api = Api(app, authorizations=None)
+        ns = api.namespace("test", authorizations=ns_auth)
+
+        with app.test_request_context():
+            s = Swagger(api)
+            d = s.as_dict()
+            assert d.get("securityDefinitions") is not None
+            assert "apikey" in d["securityDefinitions"]
+
 
 class SwaggerRegisterErrorsTest:
     def test_register_errors_empty(self, app, api):
