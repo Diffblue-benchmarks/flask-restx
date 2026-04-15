@@ -938,6 +938,49 @@ class PolymorphTest:
         cloned = p.clone()
         assert isinstance(cloned, Polymorph)
 
+    def test_output_returns_default_when_value_none_and_not_allow_null(self):
+        # Covers lines 761-762: elif self.default is not None: return self.default
+        mapping, Child1Class, child2, parent = self._make_mapping()
+        p = Polymorph(mapping, required=True, default="fallback")
+        result = p.output("key", {"key": None})
+        assert result == "fallback"
+
+    def test_output_raises_for_value_without_class_attr(self):
+        # Covers line 766: raise ValueError("Polymorph field only accept class instances")
+        mapping, Child1Class, child2, parent = self._make_mapping()
+        p = Polymorph(mapping)
+
+        class NoClassAttr:
+            def __getattribute__(self, name):
+                if name == "__class__":
+                    raise AttributeError("no __class__")
+                return super().__getattribute__(name)
+
+        with pytest.raises(ValueError, match="Polymorph field only accept class instances"):
+            p.output("key", {"key": NoClassAttr()})
+
+    def test_output_raises_for_multiple_candidates(self):
+        # Covers lines 774-775: elif len(candidates) > 1: raise ValueError(...)
+        mapping, Child1Class, child2, parent = self._make_mapping()
+        p = Polymorph(mapping)
+        obj = Child1Class()
+        mock_mapping = MagicMock()
+        mock_mapping.items.return_value = [(Child1Class, child2), (Child1Class, child2)]
+        p.mapping = mock_mapping
+        with pytest.raises(ValueError, match="Unable to determine"):
+            p.output("key", {"key": obj})
+
+    def test_output_marshals_matching_candidate(self):
+        # Covers line 779: return marshal(...)
+        mapping, Child1Class, child2, parent = self._make_mapping()
+        p = Polymorph(mapping)
+        obj = Child1Class()
+        with patch("flask_restx.fields.marshal") as mock_marshal:
+            mock_marshal.return_value = {"field": "value"}
+            result = p.output("key", {"key": obj})
+        assert result == {"field": "value"}
+        mock_marshal.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # Wildcard
